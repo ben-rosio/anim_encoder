@@ -46,8 +46,9 @@ var create_partial = function(func) {
     };
 };
 
-var movingPNG = function (source_url, timeline, canvasEl, delayFactor) {
+var movingPNG = function (source_url, timeline, canvasEl, delayFactor, endHangLength) {
 	delayFactor = delayFactor || 0.7;
+    endHangLength = 4000;
 
     var context = null;
     var image = new Image();
@@ -79,7 +80,7 @@ var movingPNG = function (source_url, timeline, canvasEl, delayFactor) {
         var runtime = 0;
         for (var j = 0; j < timeline.length - 1; ++j)
             runtime += timeline[j].delay;
-        return runtime;
+        return runtime + endHangLength;
     };
 
     var getFrame = function(currentTime) {
@@ -89,6 +90,8 @@ var movingPNG = function (source_url, timeline, canvasEl, delayFactor) {
             if (currentTime < run_time)
             	return j;
         }
+
+        return j;
     };
 
     var animationLoop = function(elapsedTime) {
