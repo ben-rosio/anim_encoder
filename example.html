@@ -3,107 +3,123 @@
 
 <head>
 <script type="text/javascript" src="example_anim.js"></script>
-<script type="text/javascript">
-var delay_scale = 0.7
-var timer = null
+<script type="text/javascript">/**
+ * Polyfill requestAnimationFrame
+ */
 
-var animate = function(img, timeline, element)
-{
-	var i = 0
+(function() {
+    var lastTime = 0;
+    var vendors = ['webkit', 'moz'];
+    for(var x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
+        window.requestAnimationFrame = window[vendors[x]+'RequestAnimationFrame'];
+        window.cancelAnimationFrame =
+          window[vendors[x]+'CancelAnimationFrame'] || window[vendors[x]+'CancelRequestAnimationFrame'];
+    }
 
-	var run_time = 0
-	for (var j = 0; j < timeline.length - 1; ++j)
-		run_time += timeline[j].delay
+    if (!window.requestAnimationFrame)
+        window.requestAnimationFrame = function(callback, element) {
+            var currTime = new Date().getTime();
+            var timeToCall = Math.max(0, 16 - (currTime - lastTime));
+            var id = window.setTimeout(function() { callback(currTime + timeToCall); },
+              timeToCall);
+            lastTime = currTime + timeToCall;
+            return id;
+        };
 
-	var f = function()
-	{
-		var frame = i++ % timeline.length
-		var delay = timeline[frame].delay * delay_scale
-		var blits = timeline[frame].blit
+    if (!window.cancelAnimationFrame)
+        window.cancelAnimationFrame = function(id) {
+            clearTimeout(id);
+        };
+}());
 
-		var ctx = element.getContext('2d')
+/**
+ * Use underscore's partial method.
+ * http://underscorejs.org/#partial
+ */
+var create_partial = function(func) {
+    var boundArgs = Array.prototype.slice.call(arguments, 1);
+    return function() {
+        var position = 0;
+        var args = boundArgs.slice();
+        while (position < arguments.length) args.push(arguments[position++]);
+        return func.apply(this, args);
+    };
+};
 
-		for (j = 0; j < blits.length; ++j)
-		{
-			var blit = blits[j]
-			var sx = blit[0]
-			var sy = blit[1]
-			var w = blit[2]
-			var h = blit[3]
-			var dx = blit[4]
-			var dy = blit[5]
-			ctx.drawImage(img, sx, sy, w, h, dx, dy, w, h)
-		}
+var movingPNG = function (source_url, timeline, canvasEl, delayFactor) {
+	delayFactor = delayFactor || 0.7;
 
-		timer = window.setTimeout(f, delay)
-	}
+    var context = null;
+    var image = new Image();
 
-	if (timer) window.clearTimeout(timer)
-	f()
-}
+    var totalRuntime = 0;
+    var currentRuntime = 0;
+    var lastRun = 0;
 
-var animate_fallback = function(img, timeline, element)
-{
-	var i = 0
+    var drawImage = null;
 
-	var run_time = 0
-	for (var j = 0; j < timeline.length - 1; ++j)
-		run_time += timeline[j].delay
+    var init = function() {
+        context = canvasEl.getContext('2d');
+        image.onload = function() {
+            drawImage = create_partial(context.drawImage, image);
+            window.requestAnimationFrame(animationLoop);
+        }.bind(this);
 
-	var f = function()
-	{
-		if (i % timeline.length == 0)
-		{
-			while (element.hasChildNodes())
-				element.removeChild(element.lastChild)
-		}
+        image.src = source_url;
 
-		var frame = i++ % timeline.length
-		var delay = timeline[frame].delay * delay_scale
-		var blits = timeline[frame].blit
+        totalRuntime = computeRuntime();
+        lastRun = currentTime();
+    };
 
-		for (j = 0; j < blits.length; ++j)
-		{
-			var blit = blits[j]
-			var sx = blit[0]
-			var sy = blit[1]
-			var w = blit[2]
-			var h = blit[3]
-			var dx = blit[4]
-			var dy = blit[5]
+    var currentTime = function() {
+    	return new Date().getTime();
+    };
 
-			var d = document.createElement('div')
-			d.style.position = 'absolute'
-			d.style.left = dx + "px"
-			d.style.top = dy + "px"
-			d.style.width = w + "px"
-			d.style.height = h + "px"
-			d.style.backgroundImage = "url('" + img.src + "')"
-			d.style.backgroundPosition = "-" + sx + "px -" + sy + "px"
+    var computeRuntime = function() {
+        var runtime = 0;
+        for (var j = 0; j < timeline.length - 1; ++j)
+            runtime += timeline[j].delay;
+        return runtime;
+    };
 
-			element.appendChild(d)
-		}
+    var getFrame = function(currentTime) {
+        var run_time = 0;
+        for (var j = 0; j < timeline.length - 1; ++j) {
+            run_time += timeline[j].delay;
+            if (currentTime < run_time)
+            	return j;
+        }
+    };
 
-		timer = window.setTimeout(f, delay)
-	}
+    var animationLoop = function(elapsedTime) {
+    	var elapsedTime = currentTime() - lastRun;
+    	currentRuntime = (currentRuntime + elapsedTime) % totalRuntime;
 
-	if (timer) window.clearTimeout(timer)
-	f()
-}
+        var frame = getFrame(currentRuntime);
+        var delay = timeline[frame].delay * delayFactor;
+        var blits = timeline[frame].blit;
 
-function set_animation(img_url, timeline, canvas_id, fallback_id)
-{
-	var img = new Image()
-	img.onload = function()
-	{
-		var canvas = document.getElementById(canvas_id)
-		if (canvas && canvas.getContext)
-			animate(img, timeline, canvas)
-		else
-			animate_fallback(img, timeline, document.getElementById(fallback_id))
-	}
-	img.src = img_url
-}
+        for (j = 0; j < blits.length; ++j) {
+			var blit = blits[j],
+				sx = blit[0],
+				sy = blit[1],
+				w = blit[2],
+				h = blit[3],
+				dx = blit[4],
+				dy = blit[5];
+
+			context.drawImage(image, sx, sy, w, h, dx, dy, w, h);
+        }
+
+        lastRun = currentTime();
+
+        window.requestAnimationFrame(animationLoop);
+    };
+
+    animationLoop = animationLoop.bind(this);
+
+    init();
+};
 </script>
 </head>
 
@@ -111,12 +127,15 @@ function set_animation(img_url, timeline, canvas_id, fallback_id)
 
 <p>Example Animation. Please ensure you've run anim_encoder.py to generate the required data.
 
-<div><canvas id="anim_target" class="anim_target" width="800" height="450">
-<div id="anim_fallback" class="anim_target" style="width: 800px; height: 450px; position: relative;"></div>
-<p></canvas></div>
+<div>
+    <canvas id="anim_target" class="anim_target" width="800" height="450">
+        <div id="anim_fallback" class="anim_target" style="width: 800px; height: 450px; position: relative;"></div>
+    </canvas>
+</div>
 
 <script>
-set_animation("example_packed.png", example_timeline, 'anim_target', 'anim_fallback');
+new movingPNG('example_packed.png', example_timeline, document.getElementById('anim_target'));
+// set_animation("example_packed.png", cropped_timeline, 'anim_target', 'anim_fallback');
 </script>
 
 </body>
